@@ -739,3 +739,91 @@ model WebhookDelivery {
   @@index([endpointId, deliveredAt(sort: Desc)])
   @@map("webhook_deliveries")
 }
+
+// ═══════════════════════════════════════════════════════════════════
+// v1.7 新增模型
+// ═══════════════════════════════════════════════════════════════════
+
+enum FormStatus {
+  ACTIVE
+  INACTIVE
+  ARCHIVED
+}
+
+enum SurveyStatus {
+  PENDING
+  COMPLETED
+  EXPIRED
+}
+
+// 表單收集
+model CollectForm {
+  id            String   @id @default(cuid())
+  workspaceId   String
+  name          String
+  description   String?
+  fields        Json     // 存儲字段定義
+  successMsg    String?
+  status        FormStatus @default(ACTIVE)
+  responseCount Int      @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  workspace     Workspace     @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  responses     FormResponse[]
+
+  @@map("collect_forms")
+}
+
+model FormResponse {
+  id          String    @id @default(cuid())
+  formId      String
+  workspaceId String
+  userId      String?
+  platform    String?
+  sessionId   String?
+  answers     Json
+  isComplete  Boolean   @default(false)
+  submittedAt DateTime?
+  createdAt   DateTime  @default(now())
+
+  form        CollectForm @relation(fields: [formId], references: [id], onDelete: Cascade)
+
+  @@map("form_responses")
+}
+
+// 滿意度調查
+model SatisfactionSurvey {
+  id          String        @id @default(cuid())
+  workspaceId String
+  agentId     String?
+  sessionId   String?
+  platform    String
+  userId      String
+  rating      Int?
+  comment     String?
+  tags        String[]
+  status      SurveyStatus @default(PENDING)
+  sentAt      DateTime     @default(now())
+  answeredAt  DateTime?
+  expiresAt   DateTime?
+  createdAt   DateTime     @default(now())
+
+  @@map("satisfaction_surveys")
+}
+
+// 媒體處理任務
+model MediaJob {
+  id          String   @id @default(cuid())
+  workspaceId String
+  audioUrl    String
+  status      String   @default("PENDING") // PENDING | PROCESSING | COMPLETED | FAILED
+  transcript  String?
+  language    String?
+  errorMsg    String?
+  sessionId   String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("media_jobs")
+}
