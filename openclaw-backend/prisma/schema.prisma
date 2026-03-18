@@ -114,6 +114,7 @@ model User {
   role         UserRole  @default(VIEWER)
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
+  createdBy    String?
 
   // Relations
   auditLogs    AuditLog[]
@@ -721,6 +722,7 @@ model WebhookEndpoint {
   failCount    Int       @default(0)
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
+  createdBy    String?
 
   @@map("webhook_endpoints")
 }
