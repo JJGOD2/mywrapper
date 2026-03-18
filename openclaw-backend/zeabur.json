@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.zeabur.com/config.json",
   "build": {
-    "command": "npm install && npm run build",
-    "output": "dist"
+    "command": "npm install",
+    "output": "."
   },
-  "startCommand": "npm run db:push && npm run db:seed && npm start"
+  "startCommand": "npx prisma generate && npx prisma db push && npm run db:seed && npx tsc && node dist/index.js"
 }
