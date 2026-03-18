@@ -30,6 +30,12 @@ import webhookAdminRoutes from "@/routes/admin/webhooks";
 import publicApiRoutes    from "@/routes/public-api";
 import sheetsRoutes       from "@/routes/integrations/sheets";
 
+// v1.7 New Features
+import formsRoutes        from "@/routes/forms";
+import logSearchRoutes    from "@/routes/log-search";
+import mediaRoutes        from "@/routes/media";
+import satisfactionRoutes from "@/routes/satisfaction";
+
 const app    = express();
 const server = http.createServer(app);
 const PORT   = Number(process.env.PORT ?? 4000);
@@ -77,7 +83,13 @@ app.use("/api/admin/webhooks",      webhookAdminRoutes);
 app.use("/api/integrations/sheets", sheetsRoutes);
 app.use("/public/v1",               publicApiRoutes);
 
-app.get("/health",(_req,res)=>res.json({status:"ok",ts:new Date().toISOString(),version:"1.0.0"}));
+// v1.7 New Routes
+app.use("/api/forms",          formsRoutes);
+app.use("/api/log-search",     logSearchRoutes);
+app.use("/api/media",          mediaRoutes);
+app.use("/api/satisfaction",   satisfactionRoutes);
+
+app.get("/health",(_req,res)=>res.json({status:"ok",ts:new Date().toISOString(),version:"1.7.0"}));
 app.use(errorHandler);
 
 server.listen(PORT, () => {

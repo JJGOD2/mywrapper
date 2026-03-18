@@ -6,6 +6,7 @@ import {
   ShieldCheck, ScrollText, BarChart3, Plug, Settings,
   ClipboardCheck, Cpu, FileText, Bell,
   Paintbrush, ShieldAlert, KeyRound, Server,
+  Search, Heart,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -48,8 +49,15 @@ const navSections = [
   {
     label: "安全 & 日誌",
     items: [
-      { href: "/security",     label: "Security",     icon: ShieldCheck, badge: 2 },
-      { href: "/logs",         label: "Logs",         icon: ScrollText },
+      { href: "/security",       label: "Security",       icon: ShieldCheck, badge: 2 },
+      { href: "/logs",           label: "Logs",           icon: ScrollText },
+      { href: "/log-explorer",  label: "日誌搜尋",      icon: Search },
+    ],
+  },
+  {
+    label: "用戶體驗",
+    items: [
+      { href: "/satisfaction",  label: "滿意度調查",    icon: Heart },
     ],
   },
   {
