@@ -4,7 +4,7 @@ import { decryptSecret } from "@/lib/crypto";
 import { getOrCreateSession, appendMessages, maybeCompressSession } from "@/services/session.service";
 import { getModelConfig }  from "@/services/model.service";
 import { buildRagContext }  from "@/services/rag/rag.service";
-import { autoTranslateIfNeeded } from "@/services/media/translate.service"; from "@/services/rag/rag.service";
+import { autoTranslateIfNeeded } from "@/services/media/translate.service";
 
 export interface AgentInvokeInput {
   workspaceId: string;
