@@ -1,0 +1,7 @@
+{
+  "$schema": "https://schema.zeabur.com/config.json",
+  "build": {
+    "command": "npm install && npm run build",
+    "output": ".next"
+  }
+}

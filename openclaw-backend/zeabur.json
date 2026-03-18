@@ -1,0 +1,8 @@
+{
+  "$schema": "https://schema.zeabur.com/config.json",
+  "build": {
+    "command": "npm install && npm run build",
+    "output": "dist"
+  },
+  "startCommand": "npm run db:push && npm run db:seed && npm start"
+}
