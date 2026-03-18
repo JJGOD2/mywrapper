@@ -1,0 +1,8 @@
+{
+  "$schema": "https://schema.zeabur.com/config.json",
+  "build": {
+    "frontend": {
+      "output": ".next"
+    }
+  }
+}
