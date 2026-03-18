@@ -18,6 +18,10 @@ const titles: Record<string, string> = {
   "/gateway":      "Gateway Config",
   "/templates":    "模板中心",
   "/alerts":       "告警通知",
+  "/whitelabel":   "白標設定",
+  "/permissions":  "角色權限",
+  "/api-keys":     "API & Webhook",
+  "/deploy":       "部署設定",
 };
 
 export default function Topbar() {

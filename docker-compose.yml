@@ -1,0 +1,90 @@
+version: "3.9"
+
+# OpenClaw Console — 私有雲部署 (Self-hosted)
+# 啟動：docker compose up -d
+# 第一次：docker compose run --rm backend npm run db:push && npm run db:seed
+
+services:
+
+  # ── PostgreSQL ──────────────────────────────────────────────
+  db:
+    image: postgres:16-alpine
+    container_name: openclaw_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER:     ${POSTGRES_USER:-openclaw}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+      POSTGRES_DB:       ${POSTGRES_DB:-openclaw_console}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test:     ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-openclaw}"]
+      interval: 10s
+      timeout:  5s
+      retries:  5
+
+  # ── Backend (Express + Prisma) ──────────────────────────────
+  backend:
+    build:
+      context:    ./openclaw-backend
+      dockerfile: Dockerfile
+    container_name: openclaw_backend
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      NODE_ENV:        production
+      PORT:            4000
+      DATABASE_URL:    postgresql://${POSTGRES_USER:-openclaw}:${POSTGRES_PASSWORD:-changeme}@db:5432/${POSTGRES_DB:-openclaw_console}
+      JWT_SECRET:      ${JWT_SECRET}
+      JWT_EXPIRES_IN:  ${JWT_EXPIRES_IN:-7d}
+      ENCRYPTION_KEY:  ${ENCRYPTION_KEY}
+      CORS_ORIGIN:     ${CORS_ORIGIN:-http://localhost:3000}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      LINE_CHANNEL_SECRET:       ${LINE_CHANNEL_SECRET:-}
+      LINE_CHANNEL_ACCESS_TOKEN: ${LINE_CHANNEL_ACCESS_TOKEN:-}
+    ports:
+      - "4000:4000"
+    healthcheck:
+      test:     ["CMD-SHELL", "curl -f http://localhost:4000/health || exit 1"]
+      interval: 15s
+      timeout:  5s
+      retries:  3
+
+  # ── Frontend (Next.js) ──────────────────────────────────────
+  frontend:
+    build:
+      context:    ./openclaw-console
+      dockerfile: Dockerfile
+    container_name: openclaw_frontend
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    environment:
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:4000}
+    ports:
+      - "3000:3000"
+
+  # ── Nginx reverse proxy (optional) ─────────────────────────
+  nginx:
+    image: nginx:alpine
+    container_name: openclaw_nginx
+    restart: unless-stopped
+    depends_on:
+      - frontend
+      - backend
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/certs:/etc/nginx/certs:ro
+    profiles:
+      - with-nginx                               # only started with: docker compose --profile with-nginx up
+
+volumes:
+  postgres_data:

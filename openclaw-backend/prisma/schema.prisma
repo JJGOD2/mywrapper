@@ -117,6 +117,7 @@ model User {
 
   // Relations
   auditLogs    AuditLog[]
+  memberships  WorkspaceMember[]
 
   @@map("users")
 }
@@ -144,6 +145,9 @@ model Workspace {
   logs         LogEntry[]
   usageRecords UsageRecord[]
   backups      WorkspaceBackup[]
+  reviewQueue  ReviewQueue[]
+  gatewayConfig GatewayConfig?
+  members      WorkspaceMember[]
 
   @@map("workspaces")
 }
@@ -464,4 +468,274 @@ model AuditLog {
 
   @@index([userId, createdAt(sort: Desc)])
   @@map("audit_logs")
+}
+
+// ─────────────────────────────────────────────────────────────
+// REVIEW QUEUE
+// ─────────────────────────────────────────────────────────────
+
+enum ReviewStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  EDITED
+  TIMEOUT
+}
+
+model ReviewQueue {
+  id            String       @id @default(cuid())
+  workspaceId   String
+  agentId       String
+  platform      String
+  userId        String
+  userMessage   String       @db.Text
+  aiDraft       String       @db.Text
+  editedReply   String?      @db.Text
+  replyToken    String?
+  status        ReviewStatus @default(PENDING)
+  reviewedBy    String?
+  reviewedAt    DateTime?
+  sentAt        DateTime?
+  note          String?
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+  workspace     Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, status, createdAt(sort: Desc)])
+  @@map("review_queue")
+}
+
+// ─────────────────────────────────────────────────────────────
+// ALERT RULES
+// ─────────────────────────────────────────────────────────────
+
+enum AlertChannel {
+  EMAIL
+  SLACK_WEBHOOK
+  LINE_NOTIFY
+}
+
+enum AlertTrigger {
+  ERROR_RATE_HIGH
+  BUDGET_THRESHOLD
+  SECURITY_FAIL
+  ALLOWLIST_VIOLATION
+  DAILY_REPORT
+  REVIEW_PENDING
+}
+
+model AlertRule {
+  id          String       @id @default(cuid())
+  workspaceId String?
+  name        String
+  trigger     AlertTrigger
+  channel     AlertChannel
+  destination String
+  threshold   Float?
+  enabled     Boolean      @default(true)
+  lastFiredAt DateTime?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  @@map("alert_rules")
+}
+
+model AlertLog {
+  id      String   @id @default(cuid())
+  ruleId  String
+  trigger String
+  message String   @db.Text
+  sentAt  DateTime @default(now())
+  @@map("alert_logs")
+}
+
+// ─────────────────────────────────────────────────────────────
+// GATEWAY CONFIG
+// ─────────────────────────────────────────────────────────────
+
+model GatewayConfig {
+  id            String    @id @default(cuid())
+  workspaceId   String    @unique
+  configJson    Json
+  rawJson5      String    @db.Text
+  lastPushedAt  DateTime?
+  lastValidAt   DateTime?
+  validationOk  Boolean   @default(false)
+  validationMsg String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  workspace     Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  @@map("gateway_configs")
+}
+
+// ─────────────────────────────────────────────────────────────
+// TEMPLATES
+// ─────────────────────────────────────────────────────────────
+
+enum TemplateCategory {
+  CUSTOMER_SERVICE
+  SALES
+  ADMIN
+  FAQ
+  FORM_REPLY
+  SUMMARY
+  ESCALATION
+  CUSTOM
+}
+
+model Template {
+  id          String           @id @default(cuid())
+  workspaceId String?
+  name        String
+  description String           @default("")
+  category    TemplateCategory @default(CUSTOM)
+  content     String           @db.Text
+  variables   Json?
+  usageCount  Int              @default(0)
+  isSystem    Boolean          @default(false)
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+  @@index([workspaceId, category])
+  @@map("templates")
+}
+
+// ─────────────────────────────────────────────────────────────
+// WHITE LABEL  (品牌客製化)
+// ─────────────────────────────────────────────────────────────
+
+model WhiteLabel {
+  id              String   @id @default(cuid())
+  workspaceId     String?  @unique           // null = 全域預設
+  brandName       String   @default("OpenClaw Console")
+  logoUrl         String?
+  faviconUrl      String?
+  primaryColor    String   @default("#BA7517")
+  accentColor     String   @default("#854F0B")
+  customDomain    String?  @unique
+  customCss       String?  @db.Text
+  supportEmail    String?
+  supportUrl      String?
+  footerText      String?
+  hideBuiltBy     Boolean  @default(false)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  @@map("white_labels")
+}
+
+// ─────────────────────────────────────────────────────────────
+// RBAC  (角色權限)
+// ─────────────────────────────────────────────────────────────
+
+enum PermissionAction {
+  VIEW
+  CREATE
+  UPDATE
+  DELETE
+  APPROVE       // 審核相關
+  PUSH          // Gateway push
+  MANAGE        // 完整管理（含刪除）
+}
+
+enum PermissionResource {
+  WORKSPACE
+  AGENT
+  CHANNEL
+  TOOL
+  SKILL
+  SECRET
+  LOG
+  USAGE
+  SECURITY
+  REVIEW
+  GATEWAY
+  TEMPLATE
+  ALERT
+  WHITELABEL
+  API_KEY
+  USER
+}
+
+model RolePermission {
+  id         String             @id @default(cuid())
+  role       UserRole
+  resource   PermissionResource
+  action     PermissionAction
+  createdAt  DateTime           @default(now())
+
+  @@unique([role, resource, action])
+  @@map("role_permissions")
+}
+
+model WorkspaceMember {
+  id          String    @id @default(cuid())
+  workspaceId String
+  userId      String
+  role        UserRole  @default(VIEWER)
+  invitedBy   String?
+  joinedAt    DateTime  @default(now())
+
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, userId])
+  @@map("workspace_members")
+}
+
+// ─────────────────────────────────────────────────────────────
+// API KEYS  (對外開放 API)
+// ─────────────────────────────────────────────────────────────
+
+enum ApiKeyScope {
+  READ_ONLY
+  READ_WRITE
+  WEBHOOK_ONLY
+  FULL_ACCESS
+}
+
+model ApiKey {
+  id           String       @id @default(cuid())
+  workspaceId  String?                          // null = 全域 key
+  name         String
+  keyHash      String       @unique             // sha256(key), 只存 hash
+  keyPrefix    String                           // 顯示用，e.g. "oc_live_Abc1..."
+  scope        ApiKeyScope  @default(READ_ONLY)
+  allowedIps   String[]                         // IP 白名單，空 = 不限
+  expiresAt    DateTime?
+  lastUsedAt   DateTime?
+  usageCount   Int          @default(0)
+  enabled      Boolean      @default(true)
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  @@map("api_keys")
+}
+
+model WebhookEndpoint {
+  id           String    @id @default(cuid())
+  workspaceId  String?
+  name         String
+  url          String
+  secret       String                           // HMAC signing secret
+  events       String[]                         // e.g. ["log.error", "review.pending"]
+  enabled      Boolean   @default(true)
+  lastFiredAt  DateTime?
+  failCount    Int       @default(0)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@map("webhook_endpoints")
+}
+
+model WebhookDelivery {
+  id              String    @id @default(cuid())
+  endpointId      String
+  event           String
+  payload         Json
+  responseStatus  Int?
+  responseBody    String?   @db.Text
+  ok              Boolean   @default(false)
+  attemptCount    Int       @default(1)
+  deliveredAt     DateTime  @default(now())
+
+  @@index([endpointId, deliveredAt(sort: Desc)])
+  @@map("webhook_deliveries")
 }

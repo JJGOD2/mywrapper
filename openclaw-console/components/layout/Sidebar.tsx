@@ -5,6 +5,7 @@ import {
   LayoutDashboard, Building2, Bot, Radio, Wrench,
   ShieldCheck, ScrollText, BarChart3, Plug, Settings,
   ClipboardCheck, Cpu, FileText, Bell,
+  Paintbrush, ShieldAlert, KeyRound, Server,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -24,6 +25,15 @@ const navSections = [
       { href: "/agents",       label: "Agents",       icon: Bot },
       { href: "/channels",     label: "Channels",     icon: Radio },
       { href: "/tools",        label: "Tools & Skills",icon: Wrench },
+    ],
+  },
+  {
+    label: "Phase 3",
+    items: [
+      { href: "/whitelabel",   label: "白標設定",    icon: Paintbrush },
+      { href: "/permissions",  label: "角色權限",    icon: ShieldAlert },
+      { href: "/api-keys",     label: "API & Webhook", icon: KeyRound },
+      { href: "/deploy",       label: "部署設定",    icon: Server },
     ],
   },
   {

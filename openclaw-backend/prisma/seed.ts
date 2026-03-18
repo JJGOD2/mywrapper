@@ -223,3 +223,136 @@ async function main() {
 main()
   .catch((e) => { console.error(e); process.exit(1); })
   .finally(() => prisma.$disconnect());
+
+// ── System Templates ──────────────────────────────────────────
+async function seedTemplates() {
+  const templates = [
+    {
+      name: "退換貨處理",
+      category: "CUSTOMER_SERVICE" as const,
+      description: "處理顧客退換貨申請的標準回覆",
+      isSystem: true,
+      content: `您好 {{customerName}}，
+
+感謝您聯絡我們的客服團隊。
+
+關於您訂單 {{orderNumber}} 的退換貨申請，我們已收到並將於 {{processDays}} 個工作天內為您處理完畢。
+
+處理完成後，退款將退回至您的原付款帳戶。如有任何問題，請隨時聯繫我們。
+
+{{agentName}} 敬上`,
+      variables: [
+        { name: "customerName", description: "顧客姓名", default: "顧客" },
+        { name: "orderNumber",  description: "訂單編號" },
+        { name: "processDays",  description: "處理天數", default: "3-5" },
+        { name: "agentName",    description: "客服名稱", default: "客服團隊" },
+      ],
+    },
+    {
+      name: "帶看預約確認",
+      category: "SALES" as const,
+      description: "房仲業務帶看預約確認通知",
+      isSystem: true,
+      content: `{{customerName}} 您好，
+
+您的帶看預約已確認：
+
+📍 物件地址：{{propertyAddress}}
+📅 帶看時間：{{viewingDate}} {{viewingTime}}
+👤 帶看業務：{{agentName}} / {{agentPhone}}
+
+如需更改時間，請提前 2 小時告知。期待與您見面！`,
+      variables: [
+        { name: "customerName",     description: "顧客姓名" },
+        { name: "propertyAddress",  description: "物件地址" },
+        { name: "viewingDate",      description: "帶看日期" },
+        { name: "viewingTime",      description: "帶看時間", default: "14:00" },
+        { name: "agentName",        description: "業務姓名" },
+        { name: "agentPhone",       description: "業務電話" },
+      ],
+    },
+    {
+      name: "FAQ 標準回覆",
+      category: "FAQ" as const,
+      description: "常見問題標準化回覆框架",
+      isSystem: true,
+      content: `感謝您的詢問！
+
+關於「{{questionTopic}}」，以下是相關說明：
+
+{{answerContent}}
+
+如需進一步協助，歡迎繼續詢問，或聯絡我們的專人服務：{{contactInfo}}`,
+      variables: [
+        { name: "questionTopic", description: "問題主題" },
+        { name: "answerContent", description: "回答內容" },
+        { name: "contactInfo",   description: "聯絡資訊", default: "週一至週五 09:00-18:00" },
+      ],
+    },
+    {
+      name: "會議摘要",
+      category: "SUMMARY" as const,
+      description: "會議記錄摘要格式",
+      isSystem: true,
+      content: `📋 會議摘要
+
+日期：{{meetingDate}}
+參與者：{{participants}}
+
+**討論重點**
+{{keyPoints}}
+
+**決議事項**
+{{decisions}}
+
+**下次追蹤**
+{{followUps}}
+
+---
+整理：{{preparedBy}}`,
+      variables: [
+        { name: "meetingDate",  description: "會議日期" },
+        { name: "participants", description: "參與者" },
+        { name: "keyPoints",    description: "討論重點" },
+        { name: "decisions",    description: "決議事項" },
+        { name: "followUps",    description: "後續追蹤" },
+        { name: "preparedBy",   description: "整理人", default: "行政助理" },
+      ],
+    },
+    {
+      name: "升級轉接通知",
+      category: "ESCALATION" as const,
+      description: "將對話升級至真人客服的轉接通知",
+      isSystem: true,
+      content: `您好，
+
+感謝您的耐心等候。您的問題需要由我們的專業團隊為您處理。
+
+我已將您的案件轉交給 {{handoffTeam}}，預計將於 {{responseTime}} 內與您聯繫。
+
+案件編號：{{caseId}}（請保存以備查詢）
+
+造成不便，深感抱歉。`,
+      variables: [
+        { name: "handoffTeam",  description: "接手團隊", default: "資深客服" },
+        { name: "responseTime", description: "回覆時間", default: "1 個工作天" },
+        { name: "caseId",       description: "案件編號" },
+      ],
+    },
+  ];
+
+  for (const t of templates) {
+    await (prisma.template as any).upsert({
+      where:  { id: t.name },       // use name as unique key for seed idempotency
+      update: {},
+      create: t,
+    }).catch(async () => {
+      // If upsert fails due to no unique constraint, just create
+      await (prisma.template as any).create({ data: t }).catch(() => {});
+    });
+  }
+  console.log("  ✓ Templates");
+}
+
+// Run template seed
+seedTemplates().catch(console.error);
