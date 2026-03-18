@@ -1,0 +1,467 @@
+// prisma/schema.prisma
+// OpenClaw Console — 完整資料庫結構
+// 執行: npx prisma db push && npx prisma generate
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─────────────────────────────────────────────────────────────
+// ENUM
+// ─────────────────────────────────────────────────────────────
+
+enum PlanType {
+  STARTER
+  PRO
+  BUSINESS
+}
+
+enum WorkspaceStatus {
+  ACTIVE
+  SETTING
+  PAUSED
+  ERROR
+}
+
+enum AgentStatus {
+  ENABLED
+  DISABLED
+  STANDBY
+}
+
+enum ChannelType {
+  LINE
+  TELEGRAM
+  SLACK
+  DISCORD
+  TEAMS
+  GOOGLECHAT
+  WHATSAPP
+}
+
+enum ChannelStatus {
+  CONNECTED
+  TESTING
+  DISCONNECTED
+  ERROR
+}
+
+enum RiskLevel {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum SkillStatus {
+  ENABLED
+  DISABLED
+  PENDING
+}
+
+enum SkillSource {
+  OFFICIAL
+  COMMUNITY
+  PRIVATE
+}
+
+enum SecretStatus {
+  OK
+  EXPIRING
+  EXPIRED
+}
+
+enum AuditResult {
+  PASS
+  WARN
+  FAIL
+}
+
+enum LogType {
+  CHAT
+  TOOL
+  ERROR
+  WARN
+  SYSTEM
+}
+
+enum IntegrationStatus {
+  CONNECTED
+  RECONNECT
+  PENDING
+  INACTIVE
+}
+
+enum UserRole {
+  ADMIN
+  OPERATOR
+  VIEWER
+}
+
+// ─────────────────────────────────────────────────────────────
+// USER & AUTH
+// ─────────────────────────────────────────────────────────────
+
+model User {
+  id           String    @id @default(cuid())
+  email        String    @unique
+  passwordHash String
+  name         String?
+  role         UserRole  @default(VIEWER)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  // Relations
+  auditLogs    AuditLog[]
+
+  @@map("users")
+}
+
+// ─────────────────────────────────────────────────────────────
+// WORKSPACE  (多租戶核心)
+// ─────────────────────────────────────────────────────────────
+
+model Workspace {
+  id          String          @id @default(cuid())
+  name        String                              // e.g. "電商客服"
+  client      String                              // e.g. "客戶 A"
+  plan        PlanType        @default(STARTER)
+  status      WorkspaceStatus @default(SETTING)
+  gatewayUrl  String          @default("http://127.0.0.1:8888")
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  // Relations
+  agents       Agent[]
+  channels     ChannelBinding[]
+  secrets      Secret[]
+  tools        WorkspaceTool[]
+  skills       WorkspaceSkill[]
+  logs         LogEntry[]
+  usageRecords UsageRecord[]
+  backups      WorkspaceBackup[]
+
+  @@map("workspaces")
+}
+
+// ─────────────────────────────────────────────────────────────
+// AGENT
+// ─────────────────────────────────────────────────────────────
+
+model Agent {
+  id           String      @id @default(cuid())
+  workspaceId  String
+  name         String                           // e.g. "客服 Aria"
+  initials     String                           // e.g. "AR"
+  role         String                           // e.g. "電商客服"
+  description  String      @default("")
+  systemPrompt String      @db.Text @default("")
+  replyStyle   String      @default("friendly")
+  status       AgentStatus @default(ENABLED)
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  // Relations
+  workspace    Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  channelBindings AgentChannelBinding[]
+  toolBindings AgentTool[]
+  promptTemplates PromptTemplate[]
+
+  @@map("agents")
+}
+
+model PromptTemplate {
+  id        String   @id @default(cuid())
+  agentId   String
+  name      String                          // e.g. "退換貨模板"
+  content   String   @db.Text
+  category  String   @default("general")   // faq / refund / escalation ...
+  createdAt DateTime @default(now())
+
+  agent     Agent    @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  @@map("prompt_templates")
+}
+
+// ─────────────────────────────────────────────────────────────
+// CHANNEL
+// ─────────────────────────────────────────────────────────────
+
+model Channel {
+  id          String        @id @default(cuid())
+  type        ChannelType
+  displayName String                            // e.g. "LINE Official Account"
+  handle      String                            // e.g. "@openclaw_demo"
+  status      ChannelStatus @default(DISCONNECTED)
+  enabled     Boolean       @default(false)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  // Relations
+  bindings    ChannelBinding[]
+
+  @@map("channels")
+}
+
+// Workspace ↔ Channel (多對多) + policy
+model ChannelBinding {
+  id             String    @id @default(cuid())
+  workspaceId    String
+  channelId      String
+  defaultAgentId String?
+
+  // Policy
+  dmScope        String    @default("restricted") // restricted | open
+  groupEnabled   Boolean   @default(true)
+  allowlistMode  Boolean   @default(false)
+
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  // Relations
+  workspace      Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  channel        Channel   @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  allowlist      SenderAllowlist[]
+  agentBindings  AgentChannelBinding[]
+
+  @@unique([workspaceId, channelId])
+  @@map("channel_bindings")
+}
+
+model SenderAllowlist {
+  id               String         @id @default(cuid())
+  channelBindingId String
+  senderId         String                            // platform user id / handle
+  note             String?
+  createdAt        DateTime       @default(now())
+
+  binding          ChannelBinding @relation(fields: [channelBindingId], references: [id], onDelete: Cascade)
+
+  @@unique([channelBindingId, senderId])
+  @@map("sender_allowlists")
+}
+
+model AgentChannelBinding {
+  agentId          String
+  channelBindingId String
+
+  agent            Agent          @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  binding          ChannelBinding @relation(fields: [channelBindingId], references: [id], onDelete: Cascade)
+
+  @@id([agentId, channelBindingId])
+  @@map("agent_channel_bindings")
+}
+
+// ─────────────────────────────────────────────────────────────
+// TOOL
+// ─────────────────────────────────────────────────────────────
+
+model Tool {
+  id              String    @id @default(cuid())
+  name            String    @unique              // e.g. "order-lookup"
+  description     String    @default("")
+  risk            RiskLevel @default(LOW)
+  requireApproval Boolean   @default(false)
+  createdAt       DateTime  @default(now())
+
+  workspaceTools  WorkspaceTool[]
+  agentTools      AgentTool[]
+
+  @@map("tools")
+}
+
+// Workspace ↔ Tool (啟用狀態)
+model WorkspaceTool {
+  workspaceId String
+  toolId      String
+  enabled     Boolean  @default(true)
+  execCount   Int      @default(0)
+  updatedAt   DateTime @updatedAt
+
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  tool        Tool      @relation(fields: [toolId], references: [id], onDelete: Cascade)
+
+  @@id([workspaceId, toolId])
+  @@map("workspace_tools")
+}
+
+// Agent ↔ Tool
+model AgentTool {
+  agentId String
+  toolId  String
+
+  agent   Agent  @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  tool    Tool   @relation(fields: [toolId], references: [id], onDelete: Cascade)
+
+  @@id([agentId, toolId])
+  @@map("agent_tools")
+}
+
+// ─────────────────────────────────────────────────────────────
+// SKILL
+// ─────────────────────────────────────────────────────────────
+
+model Skill {
+  id          String      @id @default(cuid())
+  name        String      @unique              // e.g. "line-oa-adapter"
+  version     String                           // e.g. "1.2.0"
+  description String      @default("")
+  risk        RiskLevel   @default(LOW)
+  source      SkillSource @default(OFFICIAL)
+  installedAt DateTime    @default(now())
+
+  workspaceSkills WorkspaceSkill[]
+
+  @@map("skills")
+}
+
+// Workspace ↔ Skill
+model WorkspaceSkill {
+  workspaceId String
+  skillId     String
+  status      SkillStatus @default(PENDING)
+  reviewedBy  String?
+  reviewedAt  DateTime?
+  updatedAt   DateTime    @updatedAt
+
+  workspace   Workspace   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  skill       Skill       @relation(fields: [skillId], references: [id], onDelete: Cascade)
+
+  @@id([workspaceId, skillId])
+  @@map("workspace_skills")
+}
+
+// ─────────────────────────────────────────────────────────────
+// SECRETS  (API Keys, tokens — 加密儲存)
+// ─────────────────────────────────────────────────────────────
+
+model Secret {
+  id             String       @id @default(cuid())
+  workspaceId    String
+  name           String                            // e.g. "ANTHROPIC_API_KEY"
+  encryptedValue String       @db.Text             // AES-256 加密後的值
+  status         SecretStatus @default(OK)
+  expiresAt      DateTime?
+  lastUpdatedAt  DateTime     @default(now())
+  createdAt      DateTime     @default(now())
+
+  workspace      Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, name])
+  @@map("secrets")
+}
+
+// ─────────────────────────────────────────────────────────────
+// SECURITY AUDIT
+// ─────────────────────────────────────────────────────────────
+
+model SecurityAudit {
+  id          String      @id @default(cuid())
+  workspaceId String?                              // null = global audit
+  checkId     String                               // e.g. "gateway-bind"
+  title       String
+  description String      @db.Text
+  result      AuditResult
+  actionLabel String?
+  resolvedAt  DateTime?
+  createdAt   DateTime    @default(now())
+
+  @@map("security_audits")
+}
+
+// ─────────────────────────────────────────────────────────────
+// LOGS
+// ─────────────────────────────────────────────────────────────
+
+model LogEntry {
+  id          String   @id @default(cuid())
+  workspaceId String
+  type        LogType
+  message     String   @db.Text
+  metadata    Json?                                // 額外的 structured data
+  createdAt   DateTime @default(now())
+
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, createdAt(sort: Desc)])
+  @@index([type, createdAt(sort: Desc)])
+  @@map("log_entries")
+}
+
+// ─────────────────────────────────────────────────────────────
+// USAGE
+// ─────────────────────────────────────────────────────────────
+
+model UsageRecord {
+  id           String   @id @default(cuid())
+  workspaceId  String
+  date         DateTime @db.Date               // 當日 00:00 UTC
+  inputTokens  Int      @default(0)
+  outputTokens Int      @default(0)
+  apiCalls     Int      @default(0)
+  messages     Int      @default(0)
+  toolExecs    Int      @default(0)
+  costNTD      Decimal  @db.Decimal(10, 2) @default(0)
+
+  workspace    Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, date])
+  @@index([workspaceId, date(sort: Desc)])
+  @@map("usage_records")
+}
+
+// ─────────────────────────────────────────────────────────────
+// INTEGRATIONS
+// ─────────────────────────────────────────────────────────────
+
+model Integration {
+  id          String            @id @default(cuid())
+  workspaceId String?                               // null = global
+  name        String                                // e.g. "Google Sheets"
+  type        String                                // sheets / notion / gmail / calendar / webhook
+  status      IntegrationStatus @default(INACTIVE)
+  configJson  Json?                                 // provider-specific config
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  @@map("integrations")
+}
+
+// ─────────────────────────────────────────────────────────────
+// WORKSPACE BACKUP
+// ─────────────────────────────────────────────────────────────
+
+model WorkspaceBackup {
+  id          String    @id @default(cuid())
+  workspaceId String
+  snapshotJson Json                              // 完整 workspace config snapshot
+  note        String?
+  createdAt   DateTime  @default(now())
+
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@map("workspace_backups")
+}
+
+// ─────────────────────────────────────────────────────────────
+// AUDIT LOG  (使用者操作紀錄)
+// ─────────────────────────────────────────────────────────────
+
+model AuditLog {
+  id          String   @id @default(cuid())
+  userId      String
+  action      String                            // e.g. "workspace.create"
+  target      String?                           // e.g. workspace id
+  detail      Json?
+  ip          String?
+  createdAt   DateTime @default(now())
+
+  user        User     @relation(fields: [userId], references: [id])
+
+  @@index([userId, createdAt(sort: Desc)])
+  @@map("audit_logs")
+}

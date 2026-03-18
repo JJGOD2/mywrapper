@@ -1,0 +1,136 @@
+// prisma/schema.additions.prisma
+// 這些 model 請附加到 schema.prisma 的最後
+
+// ─────────────────────────────────────────────────────────────
+// REVIEW QUEUE  (人工審核流程)
+// ─────────────────────────────────────────────────────────────
+
+enum ReviewStatus {
+  PENDING    // 等待審核
+  APPROVED   // 核准 → 已發送
+  REJECTED   // 拒絕 → 不發送
+  EDITED     // 人工改稿後發送
+  TIMEOUT    // 超時未審核
+}
+
+model ReviewQueue {
+  id            String       @id @default(cuid())
+  workspaceId   String
+  agentId       String
+  platform      String                          // LINE / TELEGRAM / SLACK
+  userId        String                          // 平台用戶 ID
+  userMessage   String       @db.Text           // 原始使用者訊息
+  aiDraft       String       @db.Text           // AI 草稿回覆
+  editedReply   String?      @db.Text           // 人工改稿後的版本
+  replyToken    String?                         // LINE replyToken（有時效性）
+  status        ReviewStatus @default(PENDING)
+  reviewedBy    String?                         // 審核者 userId
+  reviewedAt    DateTime?
+  sentAt        DateTime?
+  note          String?                         // 審核備注
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  workspace     Workspace    @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, status, createdAt(sort: Desc)])
+  @@map("review_queue")
+}
+
+// ─────────────────────────────────────────────────────────────
+// ALERT RULES  (告警通知規則)
+// ─────────────────────────────────────────────────────────────
+
+enum AlertChannel {
+  EMAIL
+  SLACK_WEBHOOK
+  LINE_NOTIFY
+}
+
+enum AlertTrigger {
+  ERROR_RATE_HIGH     // tool 失敗率 > threshold
+  BUDGET_THRESHOLD    // 月費用 > threshold
+  SECURITY_FAIL       // security audit FAIL
+  ALLOWLIST_VIOLATION // sender allowlist 被觸發
+  DAILY_REPORT        // 每日定時報告
+  REVIEW_PENDING      // 有待審核項目
+}
+
+model AlertRule {
+  id           String       @id @default(cuid())
+  workspaceId  String?                          // null = 全局規則
+  name         String
+  trigger      AlertTrigger
+  channel      AlertChannel
+  destination  String                           // email / webhook URL / LINE token
+  threshold    Float?                           // for rate/budget triggers
+  enabled      Boolean      @default(true)
+  lastFiredAt  DateTime?
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  @@map("alert_rules")
+}
+
+model AlertLog {
+  id          String   @id @default(cuid())
+  ruleId      String
+  trigger     String
+  message     String   @db.Text
+  sentAt      DateTime @default(now())
+
+  @@map("alert_logs")
+}
+
+// ─────────────────────────────────────────────────────────────
+// GATEWAY CONFIG  (OpenClaw config 管理)
+// ─────────────────────────────────────────────────────────────
+
+model GatewayConfig {
+  id           String   @id @default(cuid())
+  workspaceId  String   @unique
+  configJson   Json                             // 完整 OpenClaw JSON5 config (parsed)
+  rawJson5     String   @db.Text               // 原始 JSON5 string
+  lastPushedAt DateTime?
+  lastValidAt  DateTime?
+  validationOk Boolean  @default(false)
+  validationMsg String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  workspace    Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@map("gateway_configs")
+}
+
+// ─────────────────────────────────────────────────────────────
+// PROMPT TEMPLATES  (模板中心)
+// ─────────────────────────────────────────────────────────────
+
+enum TemplateCategory {
+  CUSTOMER_SERVICE   // 客服
+  SALES              // 業務
+  ADMIN              // 行政助理
+  FAQ                // FAQ
+  FORM_REPLY         // 表單回覆
+  SUMMARY            // 摘要
+  ESCALATION         // 升級 / 轉接
+  CUSTOM             // 自訂
+}
+
+model Template {
+  id          String           @id @default(cuid())
+  workspaceId String?                             // null = 系統模板（所有人共享）
+  name        String
+  description String           @default("")
+  category    TemplateCategory @default(CUSTOM)
+  content     String           @db.Text          // prompt 模板內容，支援 {{variable}}
+  variables   Json?                              // 變數定義 [{name, description, default}]
+  usageCount  Int              @default(0)
+  isSystem    Boolean          @default(false)  // 系統預設模板不可刪除
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  @@index([workspaceId, category])
+  @@map("templates")
+}
